@@ -1,25 +1,160 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+output: html_document
+author: Shekhar Pandey
+keep_md: true
 ---
 
+### Set Global options
+```{r setoptions, echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, results= 'hold')
+```
 
-## Loading and preprocessing the data
+### Loading and preprocessing the data
+```{r}
+activity <- read.csv("activity.csv", stringsAsFactors = FALSE, na.strings ="NA")
+activity$date <- as.Date(activity$date, "%Y-%m-%d")
+```
 
+### Get the summary of data, also observe number of NAs in summary
+```{r summary}
+summary(activity)
+```
+### Exclude NA records and create a subset of complete records
+```{r completeRecords}
+activity.complete <- na.omit(activity)
+summary(activity.complete)
+```
+### Total number of steps taken per day
+```{r totalsteps}
+library(dplyr)
+activity.total <- activity.complete %>% group_by(date) %>%
+                  summarize(sum(steps))
+names(activity.total) <- c("Day", "TotalSteps")
+head(activity.total)
+```
 
+### Mean and Median of TotalSteps per day
+```{r}
+me<- mean(activity.total$TotalSteps)
+print(me)
+med <- median(activity.total$TotalSteps)
+print(med)
+```
 
-## What is mean total number of steps taken per day?
+### Make a histogram of the total number of steps per day
+```{r makehist}
+library(ggplot2)
+ggplot(activity.total, aes(TotalSteps)) +
+        geom_histogram(fill='light green', binwidth = 1000,colour="white")  +
+        labs(title="Histogram of total steps per day",
+             y="Frequency", x="Total Steps per day") +
+        geom_vline(xintercept = me, col="yellow", size=1) +
+        geom_vline(xintercept = med, col="red") +
+        geom_text(data=NULL, x=me+100, y=6, label="mean & median")
 
+```
 
+### What is the average daily activity pattern?
+```{r}
+activity.mean <- activity.complete %>% group_by(interval) %>%
+                 summarize(AvgSteps=mean(steps))
 
-## What is the average daily activity pattern?
+maxAvgStep <- activity.mean[which.max(activity.mean$AvgSteps),]
 
+msg <- paste("Max Avg Steps:", trunc(maxAvgStep$AvgSteps), 
+             "@ Interval:", trunc(maxAvgStep$interval))
+
+activity.mean %>% ggplot(aes(interval, AvgSteps)) + 
+        geom_line(color="blue", size=1) +
+        labs(title="Graph of average steps per day",
+             y="Average number of Steps", x="Time Interval") +
+        scale_x_continuous(breaks = seq(0,2400,100), limits = c(0,2400)) +
+        geom_vline(xintercept = maxAvgStep$interval, col="red")+
+        geom_text(data=NULL, x=maxAvgStep$interval+100, 
+                  y=maxAvgStep$AvgSteps,label=msg)
+```
 
 
 ## Imputing missing values
+```{r impute}
+newActivity <- activity
+na_index <- which(is.na(newActivity$steps))
+for(i in na_index){
+        intrvl <- newActivity[i,"interval"]
+        newActivity[i,]$steps <- subset(activity.mean, interval== intrvl)$AvgSteps
+}
+```
+### Display new activity dataframe
+```{r}
+head(newActivity)
+```
+### Total number of steps taken per day for new activity dataframe
+```{r}
+newActivity.total <- newActivity %>%  group_by(date) %>%
+        summarize(sum(steps))
+
+names(newActivity.total) <- c("Day", "TotalSteps")
+
+me.new <- mean(newActivity.total$TotalSteps)
+med.new <- median(newActivity.total$TotalSteps)
+
+ggplot(newActivity.total, aes(x=TotalSteps)) + 
+        geom_histogram(fill="lightgreen",binwidth=1000, color='white') + 
+        scale_y_continuous(breaks=seq(0,12,2)) +
+        labs(title="Histogram of steps per day",
+             x="Total Number of Steps per Day",
+             y ="Frequency")+
+        geom_vline(xintercept = me.new, size=1, col="yellow") +
+        geom_vline(xintercept = med.new, col="red")
 
 
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+### Compare histograms of original data and imputed data
+```{r}
+p1 <- hist(activity.total$TotalSteps, breaks = seq(-250,21500,500), plot = FALSE)
+p2 <- hist(newActivity.total$TotalSteps, breaks = seq(-250,21500,500), 
+           plot = FALSE)
+plot( p1, col=rgb(.1,.1,.1,alpha=0.8), xlim=c(-250,25000), 
+      ylim = c(0,12), main = "", xlab="Total Number of Steps per Day")
+
+plot( p2, col=rgb(.2,.2,.2,alpha=0.5), xlim=c(-250,25000), ylim = c(0,12), add=T)
+
+box()
+
+```
+
+### Are there differences in activity patterns between weekdays and weekends?
+Add dayofweek and daytype whether its weekday or weekend.
+dayofweek is having following values
+
+1. Sunday
+2. Monday
+3. Wednesday
+4. Thursday
+5. Friday
+6. Saturday
+
+
+```{r}
+library(lubridate)
+newActivity <- newActivity %>% mutate(dayofweek=wday(date),
+                                      day.type= ifelse(dayofweek != 1 & 
+                                                               dayofweek != 7,    "Weekday", ifelse(dayofweek ==1 | dayofweek ==7, "Weeknd",NA)))
+```
+
+### compare the average number of steps taken per 5-minute interval for weekdays and weekends.
+
+
+```{r}
+newActivity %>% group_by(day.type, interval) %>%
+        summarize(AvgSteps = mean(steps)) %>%
+        ggplot(aes(x=interval, y=AvgSteps)) + 
+        geom_line(aes(color=day.type)) +
+        facet_wrap(~ day.type, nrow=2, ncol=1) +
+        labs(x="interval", y="Avg total number of Steps") +
+        theme_bw()
+
+```
